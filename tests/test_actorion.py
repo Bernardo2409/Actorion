@@ -290,9 +290,9 @@ def test_main_ignores_other_events(tmp_path):
     path = tmp_path / "event.json"
     path.write_text("{}", encoding="utf-8")
     output = []
-    code = actorion.main([], environ={"GITHUB_EVENT_PATH": str(path), "GITHUB_EVENT_NAME": "pull_request",
+    code = actorion.main([], environ={"GITHUB_EVENT_PATH": str(path), "GITHUB_EVENT_NAME": "issues",
                                       **env()}, out=output.append)
-    assert code == 0 and "only handles push events" in output[0]
+    assert code == 0 and "handles push and pull_request events" in output[0]
 
 
 def test_main_reports_errors_as_annotations_without_leaking_the_webhook(tmp_path):

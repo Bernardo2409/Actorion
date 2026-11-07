@@ -1,7 +1,7 @@
-"""Actorion: post the commits of a GitHub push to a Discord channel through a webhook.
+"""Actorion: post GitHub pushes and pull requests to a Discord channel through a webhook.
 
-Runs as a step of a GitHub Actions job (see action.yml), reading the push event that GitHub
-provides. It only uses the Python standard library, so nothing has to be installed.
+Runs as a step of a GitHub Actions job (see action.yml), reading the push or pull_request event
+that GitHub provides. It only uses the Python standard library, so nothing has to be installed.
 
 It can also run on your own computer to try a message without GitHub Actions:
 
@@ -135,8 +135,24 @@ def commits_to_post(event, settings):
     return commits
 
 
-def build_payload(event, settings):
-    """The webhook message for a push event, or None when there is nothing to post."""
+def finish_payload(settings, embed=None, content=""):
+    """Add the options shared by every message: author name, role mention and allowed mentions."""
+    payload = {"allowed_mentions": {"parse": []}}  # nothing in a title or message can ping anyone
+    if settings["username"]:
+        payload["username"] = settings["username"][:80]
+    if embed is not None:
+        payload["embeds"] = [embed]
+    if settings["role"]:
+        # Only this role may be pinged.
+        content = f"<@&{settings['role']}>" + (f"\n{content}" if content else "")
+        payload["allowed_mentions"] = {"parse": [], "roles": [settings["role"]]}
+    if content:
+        payload["content"] = truncate(content, 2000)
+    return payload
+
+
+def build_push_payload(event, settings):
+    """The message for a push, or None when there is nothing to post."""
     commits = commits_to_post(event, settings)
     if not commits:
         return None  # e.g. a deleted branch, a tag push, or only bot commits
@@ -149,31 +165,122 @@ def build_payload(event, settings):
     footer = " · ".join(p for p in ("GitHub", f"branch {branch}" if branch else "",
                                      english_date(commits[-1].get("timestamp"))) if p)
 
-    payload = {"allowed_mentions": {"parse": []}}  # nothing in a commit message can ping anyone
-    if settings["username"]:
-        payload["username"] = settings["username"][:80]
+    if not settings["embed"]:
+        return finish_payload(settings, content="\n".join(
+            [f"**{title}** ({branch})"] + commit_lines(commits, settings["max_commits"], False)))
+    embed = {
+        "title": truncate(title, 256),
+        "description": truncate("\n".join(commit_lines(commits, settings["max_commits"], True)), 4096),
+        "color": COLOR,
+        "footer": {"text": truncate(footer, 2048)},
+    }
+    if url:
+        embed["url"] = url
+    return finish_payload(settings, embed=embed)
 
-    if settings["embed"]:
-        embed = {
-            "title": truncate(title, 256),
-            "description": truncate("\n".join(commit_lines(commits, settings["max_commits"], True)), 4096),
-            "color": COLOR,
-            "footer": {"text": truncate(footer, 2048)},
-        }
-        if url:
-            embed["url"] = url
-        payload["embeds"] = [embed]
-        content = ""
-    else:
-        content = "\n".join([f"**{title}** ({branch})"] + commit_lines(commits, settings["max_commits"], False))
 
-    if settings["role"]:
-        # Only this role may be pinged.
-        content = f"<@&{settings['role']}>" + (f"\n{content}" if content else "")
-        payload["allowed_mentions"] = {"parse": [], "roles": [settings["role"]]}
-    if content:
-        payload["content"] = truncate(content, 2000)
-    return payload
+# Pull request actions that are announced, and the verb used for each. Others are ignored.
+PR_COLORS = {"open": 0x238636, "merged": 0x8957E5, "closed": 0xDA3633, "draft": 0x6E7681}
+PR_ACTIONS = {
+    "opened": "opened",
+    "reopened": "reopened",
+    "closed": "closed",               # becomes "merged" when the pull request was merged
+    "ready_for_review": "marked as ready for review",
+    "converted_to_draft": "converted to draft",
+    "synchronize": "updated with new commits",
+}
+
+
+def is_bot_user(user):
+    user = user or {}
+    return user.get("type") == "Bot" or (user.get("login") or "").endswith("[bot]")
+
+
+def pr_state(event):
+    """(verb, color key) for a pull request event, or None when this action isn't announced."""
+    action = event.get("action")
+    pr = event.get("pull_request") or {}
+    if action not in PR_ACTIONS:
+        return None
+    if action == "closed":
+        return ("merged", "merged") if pr.get("merged") else ("closed", "closed")
+    if action == "converted_to_draft" or pr.get("draft"):
+        return PR_ACTIONS[action], "draft"
+    return PR_ACTIONS[action], "open"
+
+
+def build_pr_payload(event, settings):
+    """The message for a pull request event, or None when there is nothing to post."""
+    pr = event.get("pull_request") or {}
+    state = pr_state(event)
+    if state is None or not pr:
+        return None
+    if settings["ignore_bots"] and is_bot_user(pr.get("user")):
+        return None  # e.g. Dependabot pull requests
+    verb, color = state
+
+    repo = (pr.get("base", {}).get("repo") or event.get("repository") or {}).get("full_name", "repository")
+    number, title = pr.get("number"), first_line(pr.get("title"))
+    author = (pr.get("user") or {}).get("login") or "unknown"
+    branches = f"{(pr.get('head') or {}).get('ref', '?')} -> {(pr.get('base') or {}).get('ref', '?')}"
+    when = pr.get("merged_at") or pr.get("closed_at") or pr.get("updated_at") or pr.get("created_at")
+    headline = f"Pull request {verb}: #{number} {title}"
+
+    size = []
+    if isinstance(pr.get("commits"), int):
+        size.append(f"{pr['commits']} commit{'s' if pr['commits'] != 1 else ''}")
+    if isinstance(pr.get("changed_files"), int):
+        size.append(f"{pr['changed_files']} file{'s' if pr['changed_files'] != 1 else ''} changed")
+    if isinstance(pr.get("additions"), int) and isinstance(pr.get("deletions"), int):
+        size.append(f"+{pr['additions']} -{pr['deletions']}")
+
+    if not settings["embed"]:
+        lines = [f"**{headline}**", f"{repo} · {branches} · by *{author}*"]
+        if size:
+            lines.append(", ".join(size))
+        if pr.get("html_url"):
+            lines.append(f"<{pr['html_url']}>")  # <...> hides Discord's link preview
+        return finish_payload(settings, content="\n".join(lines))
+
+    description = [f"`{branches}` by *{author}*"]
+    if size:
+        description.append(", ".join(size))
+    embed = {
+        "title": truncate(headline, 256),
+        "description": truncate("\n".join(description), 4096),
+        "color": PR_COLORS[color],
+        "footer": {"text": truncate(" · ".join(p for p in ("GitHub", repo, english_date(when)) if p), 2048)},
+    }
+    if pr.get("html_url"):
+        embed["url"] = pr["html_url"]
+    return finish_payload(settings, embed=embed)
+
+
+PULL_REQUEST_EVENTS = ("pull_request", "pull_request_target")
+SUPPORTED_EVENTS = ("push",) + PULL_REQUEST_EVENTS
+
+
+def build_payload(event, settings, event_name="push"):
+    """The webhook message for a push or pull request event, or None when there is nothing to post."""
+    if event_name in PULL_REQUEST_EVENTS:
+        return build_pr_payload(event, settings)
+    return build_push_payload(event, settings)
+
+
+def is_fork_pull_request(event):
+    pr = event.get("pull_request") or {}
+    head = ((pr.get("head") or {}).get("repo") or {}).get("full_name")
+    base = ((pr.get("base") or {}).get("repo") or {}).get("full_name")
+    return bool(head and base and head != base)
+
+
+def summary(event, settings, event_name):
+    """What was posted, for the job log."""
+    if event_name in PULL_REQUEST_EVENTS:
+        verb, _ = pr_state(event)
+        return f"Posted pull request #{(event.get('pull_request') or {}).get('number')} ({verb}) to Discord."
+    count = len(commits_to_post(event, settings))
+    return f"Posted {count} commit{'s' if count != 1 else ''} to Discord."
 
 
 # ---- sending ----------------------------------------------------------------------------------------------
@@ -212,15 +319,17 @@ def post(webhook, payload, opener=urllib.request.urlopen, sleep=time.sleep):
 
 def main(argv=None, environ=None, opener=urllib.request.urlopen, sleep=time.sleep, out=print):
     environ = os.environ if environ is None else environ
-    parser = argparse.ArgumentParser(description="Post the commits of a GitHub push to Discord.")
+    parser = argparse.ArgumentParser(description="Post a GitHub push or pull request to Discord.")
     parser.add_argument("--event", default=environ.get("GITHUB_EVENT_PATH"),
-                        help="path to a push event JSON file (default: the one GitHub Actions provides)")
+                        help="path to an event JSON file (default: the one GitHub Actions provides)")
+    parser.add_argument("--event-name", default=environ.get("GITHUB_EVENT_NAME", "push"),
+                        help="push or pull_request (default: the event that started the workflow)")
     args = parser.parse_args(argv)
 
     try:
-        event_name = environ.get("GITHUB_EVENT_NAME", "push")
-        if event_name != "push":
-            out(f"::notice::Actorion only handles push events; this run was triggered by '{event_name}'.")
+        event_name = args.event_name
+        if event_name not in SUPPORTED_EVENTS:
+            out(f"::notice::Actorion handles push and pull_request events; this run was triggered by '{event_name}'.")
             return 0
         if not args.event:
             raise ActorionError("No event to read. Run inside GitHub Actions, or pass --event <file>.")
@@ -230,18 +339,23 @@ def main(argv=None, environ=None, opener=urllib.request.urlopen, sleep=time.slee
         except (OSError, ValueError) as e:
             raise ActorionError(f"Could not read the event file: {e}") from None
 
+        if (event_name in PULL_REQUEST_EVENTS and not environ.get("ACTORION_WEBHOOK", "").strip()
+                and is_fork_pull_request(event)):
+            # GitHub doesn't pass secrets to workflows of pull requests from forks.
+            out("::notice::Skipped: GitHub doesn't give secrets (the webhook) to pull requests from forks.")
+            return 0
         settings = read_settings(environ)
-        payload = build_payload(event, settings)
+        payload = build_payload(event, settings, event_name)
         if payload is None:
-            out("Nothing to post: no new commits in this push.")
+            out("Nothing to post for this event." if event_name in PULL_REQUEST_EVENTS
+                else "Nothing to post: no new commits in this push.")
             return 0
         if settings["dry_run"]:
             out("Dry run: this message would be posted:")
             out(json.dumps(payload, indent=2, ensure_ascii=False))
             return 0
         post(settings["webhook"], payload, opener=opener, sleep=sleep)
-        count = len(commits_to_post(event, settings))
-        out(f"Posted {count} commit{'s' if count != 1 else ''} to Discord.")
+        out(summary(event, settings, event_name))
         return 0
     except ActorionError as e:
         out(f"::error title=Actorion::{e}")  # shown as an annotation on the GitHub Actions run

@@ -1,5 +1,5 @@
 name: Actorion
-description: Post the commits of every push to a Discord channel through a webhook. No bot or server needed.
+description: Post pushes and pull requests to a Discord channel through a webhook. No bot or server needed.
 author: Bernardo Coelho
 branding:
   icon: bell
@@ -14,11 +14,11 @@ inputs:
     required: false
     default: ""
   max-commits:
-    description: Maximum number of commits listed in one message, from 1 to 50. Older ones are summarised.
+    description: Maximum number of commits listed in one push message, from 1 to 50. Older ones are summarised.
     required: false
     default: "15"
   ignore-bots:
-    description: Skip commits made by bots such as Dependabot (true or false).
+    description: Skip commits and pull requests made by bots such as Dependabot (true or false).
     required: false
     default: "false"
   embed:
@@ -37,7 +37,7 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Post commits to Discord
+    - name: Post to Discord
       shell: bash
       env:
         # Inputs are passed as environment variables, never pasted into the script,
