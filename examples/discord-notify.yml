@@ -1,0 +1,22 @@
+# Copy this file to the repository you want to watch, as .github/workflows/discord-notify.yml
+# and create a repository secret named DISCORD_WEBHOOK with your Discord webhook URL.
+name: Discord notifications
+
+on:
+  push:
+    branches: [main]   # the branches to announce; remove this line to announce every branch
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: Bernardo2409/Actorion@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          # Optional:
+          # role: "123456789012345678"   # ID of a role to mention
+          # ignore-bots: true            # skip commits made by bots such as Dependabot
+          # max-commits: 10              # commits listed per message (1-50)
+          # embed: false                 # plain text instead of an embed
+          # username: Commits            # name shown as the author of the message
+          # dry-run: true                # print the message in the log instead of posting it

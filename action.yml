@@ -1,0 +1,54 @@
+name: Actorion
+description: Post the commits of every push to a Discord channel through a webhook. No bot or server needed.
+author: Bernardo Coelho
+branding:
+  icon: bell
+  color: blue
+
+inputs:
+  webhook:
+    description: Discord webhook URL. Store it as a repository secret and pass it with secrets.DISCORD_WEBHOOK.
+    required: true
+  role:
+    description: ID of a Discord role to mention in each message. Empty mentions nobody.
+    required: false
+    default: ""
+  max-commits:
+    description: Maximum number of commits listed in one message, from 1 to 50. Older ones are summarised.
+    required: false
+    default: "15"
+  ignore-bots:
+    description: Skip commits made by bots such as Dependabot (true or false).
+    required: false
+    default: "false"
+  embed:
+    description: Post an embed (true) or plain text (false).
+    required: false
+    default: "true"
+  username:
+    description: Name shown as the author of the message. Empty uses the webhook's own name.
+    required: false
+    default: ""
+  dry-run:
+    description: Print the message in the job log instead of posting it (true or false).
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Post commits to Discord
+      shell: bash
+      env:
+        # Inputs are passed as environment variables, never pasted into the script,
+        # so commit messages and inputs can't inject shell code.
+        ACTORION_WEBHOOK: ${{ inputs.webhook }}
+        ACTORION_ROLE: ${{ inputs.role }}
+        ACTORION_MAX_COMMITS: ${{ inputs.max-commits }}
+        ACTORION_IGNORE_BOTS: ${{ inputs.ignore-bots }}
+        ACTORION_EMBED: ${{ inputs.embed }}
+        ACTORION_USERNAME: ${{ inputs.username }}
+        ACTORION_DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        if command -v python3 >/dev/null 2>&1; then PY=python3; else PY=python; fi
+        "$PY" "$GITHUB_ACTION_PATH/actorion.py"

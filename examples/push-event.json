@@ -1,0 +1,35 @@
+{
+  "ref": "refs/heads/main",
+  "before": "1111111111111111111111111111111111111111",
+  "after": "3333333333333333333333333333333333333333",
+  "created": false,
+  "deleted": false,
+  "forced": false,
+  "compare": "https://github.com/octo-org/example/compare/1111111...3333333",
+  "repository": {
+    "full_name": "octo-org/example",
+    "html_url": "https://github.com/octo-org/example"
+  },
+  "pusher": {"name": "octocat"},
+  "commits": [
+    {
+      "id": "2222222222222222222222222222222222222222",
+      "message": "Fix login redirect\n\nThe redirect lost the query string.",
+      "timestamp": "2026-11-07T13:40:00+01:00",
+      "url": "https://github.com/octo-org/example/commit/2222222222222222222222222222222222222222",
+      "author": {"name": "Octo Cat", "username": "octocat"}
+    },
+    {
+      "id": "3333333333333333333333333333333333333333",
+      "message": "Update README",
+      "timestamp": "2026-11-07T13:43:27+01:00",
+      "url": "https://github.com/octo-org/example/commit/3333333333333333333333333333333333333333",
+      "author": {"name": "Octo Cat", "username": "octocat"}
+    }
+  ],
+  "head_commit": {
+    "id": "3333333333333333333333333333333333333333",
+    "message": "Update README",
+    "timestamp": "2026-11-07T13:43:27+01:00"
+  }
+}
