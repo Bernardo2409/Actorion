@@ -62,9 +62,10 @@ jobs:
 
 This announces pushes to `main` and pull requests that target `main`. See [Choosing what is announced](#choosing-what-is-announced) for other combinations. The next event posts a message; its run is shown in the repository's **Actions** tab.
 
-**Using Actorion from private repositories**
+**Requirements**
 
-The Actorion repository is private. Other repositories of the same owner can use it because its **Settings > Actions > General > Access** is set to *Accessible from repositories owned by the user*. GitHub Actions must also be able to run in the repository being watched (see [Cost](#cost)).
+- GitHub Actions must be enabled in the repository being watched (see [Cost](#cost)). Public and private repositories can both use Actorion.
+- The runner needs Python 3.10 or later, available as `python3` or `python`. GitHub's own runners (`ubuntu-latest`, `windows-latest`, `macos-latest`) already have it. On a self-hosted runner, install Python first or add an [`actions/setup-python`](https://github.com/actions/setup-python) step before Actorion.
 
 ## Choosing what is announced
 
@@ -298,7 +299,8 @@ Pricing and allowances can change; check your repository owner's **Settings > Bi
 | `Input "webhook" is empty` | The `DISCORD_WEBHOOK` secret is missing in this repository, or its name is different in the workflow |
 | `Discord rejected the webhook (HTTP 404)` | The webhook was deleted in Discord. Create a new one and update the secret |
 | The run fails before starting (`startup_failure`) | GitHub Actions can't start in this repository, usually because of the account's Actions billing or limits for private repositories |
-| `Unable to resolve action Bernardo2409/Actorion` | The repository using the action can't access it. Check Actorion's **Settings > Actions > General > Access** |
+| `Unable to resolve action Bernardo2409/Actorion` | The name or version in `uses:` is wrong. Use `Bernardo2409/Actorion@v1` |
+| `python3: command not found` | The runner has no Python. Add an `actions/setup-python` step before Actorion (see [Requirements](#setup)) |
 | No message after a push | The branch is not in the workflow's `branches` list, or all commits were filtered (for example by `ignore-bots`) |
 | No message for a pull request | Its target branch is not in the `pull_request` `branches` list, its event is not in `types`, or it comes from a fork |
 | A message for every push to a pull request | The workflow's `pull_request` has no `types`, so GitHub includes `synchronize`. Add `types: [opened, reopened, closed, ready_for_review]` |
@@ -314,8 +316,11 @@ python -m pytest
 
 The tests replace Discord with a fake, so they run offline. They cover the inputs, push and pull request messages in both formats, every pull request event, filters, forks, limits, retries when Discord asks to slow down, error messages, and that every input in `action.yml` reaches the script.
 
+The same tests run on GitHub Actions for every push and pull request, on Linux, Windows and macOS and on the oldest and newest supported Python. That workflow also runs the action itself in dry-run mode, so a broken `action.yml` is caught before a release.
+
 ```
 Actorion/
+  .github/workflows/tests.yml Runs the tests and a dry run of the action on every push and pull request
   action.yml                  Action definition: inputs and the step that runs the script
   actorion.py                 Reads the push event, builds the message and posts it
   examples/
