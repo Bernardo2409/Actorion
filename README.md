@@ -65,7 +65,7 @@ This announces pushes to `main` and pull requests that target `main`. See [Choos
 **Requirements**
 
 - GitHub Actions must be enabled in the repository being watched (see [Cost](#cost)). Public and private repositories can both use Actorion.
-- The runner needs Python 3.9 or later, available as `python3` or `python`. GitHub's own runners (`ubuntu-latest`, `windows-latest`, `macos-latest`) already have it. On a self-hosted runner, install Python first or add an [`actions/setup-python`](https://github.com/actions/setup-python) step before Actorion.
+- The runner needs Python 3.10 or later, available as `python3` or `python`. GitHub's own runners (`ubuntu-latest`, `windows-latest`, `macos-latest`) already have it. On a self-hosted runner, install Python first or add an [`actions/setup-python`](https://github.com/actions/setup-python) step before Actorion.
 
 ## Choosing what is announced
 
